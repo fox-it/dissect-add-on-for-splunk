@@ -1,0 +1,98 @@
+name: Dissect CI
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          mkdir -p build
+          cp -r dissect_addon build/dissect_addon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/*
+          retention-days: 1
+
+  build-lint:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - run: |
+          pip install splunk-packaging-toolkit
+          slim validate build/dissect_addon
+
+  release:
+    if: ${{ github.ref_name == 'main' || github.ref_type == 'tag' }}
+    needs: build-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - run: echo "APP_VERSION=\"$(git describe --tags 2>/dev/null || echo "0.0.0")\"" >> $GITHUB_ENV
+      - run: |
+          sed -i -E "s/version = (.*)/version = $APP_VERSION/g" build/dissect_addon/default/app.conf
+          pip install splunk-packaging-toolkit
+          mkdir -p dist
+          slim package -o dist/ build/dissect_addon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/dissect_addon-${{ env.APP_VERSION }}.tar.gz
+          retention-days: 1
+
+  release-lint:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - run: |
+          pip install splunk-appinspect
+          splunk-appinspect inspect --included-tags private_app --included-tags appapproval --included-tags splunk-appinspect --data-format junitxml --output-file appinspect_report.xml dist/dissect_addon-$APP_VERSION.tar.gz
+          ! grep --quiet --extended-regexp "<(error|failure)" appinspect_report.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appinspect_report
+          path: appinspect_report.xml
+          retention-days: 1
+
+  publish-to-gh:
+    if: github.ref_type == 'tag'
+    needs: release-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist/
+      - run: gh release create --generate-notes $APP_VERSION dist/dissect_addon-$APP_VERSION.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
