@@ -11,10 +11,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      app-version: ${{ steps.app-version.outputs.APP_VERSION }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - id: app-version
+        run: echo "APP_VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0")" >> $GITHUB_OUTPUT
       - run: |
           mkdir -p build
           cp -r dissect_addon build/dissect_addon
@@ -41,8 +45,10 @@ jobs:
 
   release:
     if: ${{ github.ref_name == 'main' || github.ref_type == 'tag' }}
-    needs: build-lint
+    needs: [build, build-lint]
     runs-on: ubuntu-latest
+    env:
+      APP_VERSION: ${{ needs.build.outputs.app-version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -51,7 +57,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - run: echo "APP_VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0")" >> $GITHUB_ENV
       - run: |
           sed -i -E "s/version = (.*)/version = $APP_VERSION/g" build/dissect_addon/default/app.conf
           pip install splunk-packaging-toolkit
@@ -64,8 +69,10 @@ jobs:
           retention-days: 1
 
   release-lint:
-    needs: release
+    needs: [build, release]
     runs-on: ubuntu-latest
+    env:
+      APP_VERSION: ${{ needs.build.outputs.app-version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -86,8 +93,10 @@ jobs:
 
   publish-to-gh:
     if: github.ref_type == 'tag'
-    needs: release-lint
+    needs: [build, release-lint]
     runs-on: ubuntu-latest
+    env:
+      APP_VERSION: ${{ needs.build.outputs.app-version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
