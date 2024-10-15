@@ -5,10 +5,14 @@ Provides sourcetyping for ingestion and processing of dissect records.
 ## Prerequisites and dependencies
 When ingested Dissect output contains Evtx records they are correctly interpreted according to CIM if the Splunk Windows TA is installed. 
 To achieve this, the XmlWinEventLog of the Windows TA is altered to perform KV_MODE field extractions. 
-Therefor, be carefull to use this app in a production monitoring environment.
+Therefore, be carefull to use this app in a production monitoring environment.
 
 App dependencies:
 - Splunk Windows TA
+
+## Installation
+The latest verion can be downloaded and installed directly from [Splunkbase](https://splunkbase.splunk.com/app/7580).
+Alternatively it can be downloaded from the Releases page on [Github](https://github.com/fox-it/dissect-add-on-for-splunk/releases).
 
 ## Usage
 Most basic usage is to create a tcp input in Splunk and configure it with the wanted dissect sourcetype.
